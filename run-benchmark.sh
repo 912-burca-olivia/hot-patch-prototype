@@ -75,12 +75,12 @@ stop_load() {
 
 run_apply() {
     local ver="$1" load="$2" scen="$3" run="$4"
-    ./bench-apply2.sh "$ver" "$load" "$scen" "$run" 2>&1 | tee -a "$LOG" || echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ"),$scen,$run,$load,patch,$ver,NaN,NaN,NaN,false"
+    ./bench-apply.sh "$ver" "$load" "$scen" "$run" 2>&1 | tee -a "$LOG" || echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ"),$scen,$run,$load,patch,$ver,NaN,NaN,NaN,false"
 }
 
 run_rollback() {
     local load="$1" scen="$2" run="$3" label="$4"
-    ./bench-rollback2.sh "$load" "$scen" "$run" "$label" 2>&1 | tee -a "$LOG" || echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ"),$scen,$run,$load,rollback,$label,NaN,NaN,NaN,false"
+    ./bench-rollback.sh "$load" "$scen" "$run" "$label" 2>&1 | tee -a "$LOG" || echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ"),$scen,$run,$load,rollback,$label,NaN,NaN,NaN,false"
 }
 
 # Scenario 1: Patch Latency vs Load (with statistical repeats)
@@ -230,8 +230,8 @@ echo | tee -a "$LOG"
 # Generate plots
 echo "Generating visualizations..." | tee -a "$LOG"
 if command -v python3 >/dev/null 2>&1; then
-    python generate-plots.py
-    python generate-dashboard.py
+    python plots/generate-plots.py
+    python plots/generate-dashboard.py
     echo "✓ Plots and dashboard generated" | tee -a "$LOG"
     echo "  View results: results/dashboard.html" | tee -a "$LOG"
 else
@@ -240,4 +240,4 @@ else
 fi
 
 echo
-echo "All done! 🎉"
+echo "All done!"
