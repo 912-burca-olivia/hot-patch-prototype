@@ -1,5 +1,5 @@
 #!/bin/bash
-# bench-apply.sh: apply one patch version and print a CSV row
+# bench-apply.sh: apply one patch and record metrics
 set -euo pipefail
 
 VER="${1:?Usage: bench-apply.sh <vN> <load_rps> <scenario> <run_id>}"
@@ -11,47 +11,57 @@ CLASSES_DIR="target/classes"
 AGENT_JAR="target/hotpatch-agent.jar"
 PATCHED_CLASS="target/classes-patched/${VER}/com/hotpatch/demo/BusinessRules.class"
 
+# Classpath separator
 CP_SEP=":"; case "$OSTYPE" in msys*|cygwin*|win32*) CP_SEP=";";; esac
 CP="${CLASSES_DIR}${CP_SEP}${AGENT_JAR}"
 
 ts() { date -u +"%Y-%m-%dT%H:%M:%SZ"; }
 
-# Orchestration wall clock
-START_NS=$(date +%s%N 2>/dev/null || python - <<'PY'
-import time; print(int(time.time()*1e9))
-PY
-)
+# Check if patch file exists
+if [ ! -f "$PATCHED_CLASS" ]; then
+    echo "$(ts),$SCEN,$RUNID,$LOAD,patch,$VER,NaN,NaN,NaN,false"
+    exit 1
+fi
 
-OUT=$(java -cp "$CP" com.hotpatch.tool.PatchApplier "$PATCHED_CLASS")
+# Orchestration wall clock (includes all overhead)
+START_NS=$(date +%s%N 2>/dev/null || python3 -c "import time; print(int(time.time()*1e9))")
 
-END_NS=$(date +%s%N 2>/dev/null || python - <<'PY'
-import time; print(int(time.time()*1e9))
-PY
-)
+# Execute patch
+OUT=$(java -cp "$CP" com.hotpatch.tool.PatchApplier "$PATCHED_CLASS" 2>&1) || {
+    echo "$(ts),$SCEN,$RUNID,$LOAD,patch,$VER,NaN,NaN,NaN,false"
+    exit 1
+}
+
+END_NS=$(date +%s%N 2>/dev/null || python3 -c "import time; print(int(time.time()*1e9))")
 ORCH_MS=$(awk -v n="$((END_NS-START_NS))" 'BEGIN{printf("%.3f", n/1e6)}')
 
-# Parse metrics
+# Parse metrics (prefer METRIC line, fallback to human-readable)
 CLIENT_MS=""
 AGENT_MS=""
+SUCCESS="true"
 
-# 1) Prefer METRIC line if present
-METRIC=$(echo "$OUT" | awk '/^METRIC /{print}')
+METRIC=$(echo "$OUT" | grep '^METRIC ' || true)
 if [ -n "$METRIC" ]; then
-  CLIENT_MS=$(echo "$METRIC" | sed -nE 's/.*client_ms=([0-9.]+).*/\1/p')
-  AGENT_MS=$(echo "$METRIC" | sed -nE 's/.*agent_ms=([0-9.]+).*/\1/p')
+    CLIENT_MS=$(echo "$METRIC" | sed -nE 's/.*client_ms=([0-9.]+).*/\1/p')
+    AGENT_MS=$(echo "$METRIC" | sed -nE 's/.*agent_ms=([0-9.]+).*/\1/p')
 fi
 
-# 2) Fallback: robust regex from human-friendly lines
+# Fallback parsing
 if [ -z "$CLIENT_MS" ]; then
-  CLIENT_MS=$(echo "$OUT" | sed -nE 's/.*Request→response latency: *([0-9.]+) *ms.*/\1/p')
+    CLIENT_MS=$(echo "$OUT" | sed -nE 's/.*Request.*response latency: *([0-9.]+) *ms.*/\1/p' | head -1)
 fi
 if [ -z "$AGENT_MS" ]; then
-  # Matches: "HTTP 200 from agent: OK 12.345 ms" (and "(rollback)")
-  AGENT_MS=$(echo "$OUT" | sed -nE 's/.*OK *([0-9.]+) *ms.*/\1/p')
+    AGENT_MS=$(echo "$OUT" | sed -nE 's/.*OK *([0-9.]+) *ms.*/\1/p' | head -1)
 fi
 
-# Last resort: set to NaN strings so CSV remains parseable
+# Check for success
+if echo "$OUT" | grep -qi "error\|failed\|exception"; then
+    SUCCESS="false"
+fi
+
+# Default to NaN if parsing failed
 : "${CLIENT_MS:=NaN}"
 : "${AGENT_MS:=NaN}"
 
-echo "$(ts),$SCEN,$RUNID,$LOAD,patch,$VER,$ORCH_MS,$CLIENT_MS,$AGENT_MS"
+# Output CSV row
+echo "$(ts),$SCEN,$RUNID,$LOAD,patch,$VER,$ORCH_MS,$CLIENT_MS,$AGENT_MS,$SUCCESS"
