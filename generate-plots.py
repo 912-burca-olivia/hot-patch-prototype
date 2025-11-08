@@ -220,55 +220,72 @@ if not s3_apply.empty and not s3_rollback.empty:
 # ============================================================================
 # Figure 4: Latency Component Breakdown
 # ============================================================================
+
 print("Generating Figure 4: Latency Component Breakdown...")
 
-# Use representative load
-if "S1_patch_vs_load" in df_success["scenario"].values:
-    rep_load_data = df_success[df_success["scenario"] == "S1_patch_vs_load"].copy()
-    median_load = rep_load_data["load_rps"].median()
-    breakdown = rep_load_data[rep_load_data["load_rps"] == median_load].copy()
-    
-    if not breakdown.empty and len(breakdown) > 5:
+# Only use patch rows from S1 (end-to-end hotpatch under varying load)
+s1_patch = df_success[
+    (df_success["scenario"] == "S1_patch_vs_load") &
+    (df_success["op"] == "patch")
+].copy()
+
+if s1_patch.empty:
+    print("  Skipping Figure 4: no S1_patch_vs_load + op=patch rows found.")
+else:
+    for c in ["orchestration_ms", "client_ms", "agent_ms", "load_rps"]:
+        s1_patch[c] = pd.to_numeric(s1_patch[c], errors="coerce")
+
+    # Pick a representative load:
+    # the load with the most samples
+    rep_load = s1_patch["load_rps"].value_counts().idxmax()
+
+    breakdown = s1_patch[s1_patch["load_rps"] == rep_load].copy()
+
+    if breakdown.shape[0] < 5:
+        print("  Skipping Figure 4: not enough samples at the representative load (need ≥5).")
+    else:
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4.5))
-        
-        # Plot 4a: Component breakdown
-        components = []
-        labels = []
-        
-        if breakdown["orchestration_ms"].notna().any():
-            components.append(breakdown["orchestration_ms"].dropna())
-            labels.append('Orchestration')
-        if breakdown["client_ms"].notna().any():
-            components.append(breakdown["client_ms"].dropna())
-            labels.append('Client HTTP')
-        if breakdown["agent_ms"].notna().any():
-            components.append(breakdown["agent_ms"].dropna())
-            labels.append('Agent Redefine')
-        
-        if components:
-            ax1.boxplot(components, labels=labels, patch_artist=True)
-            ax1.set_ylabel('Latency (ms)')
-            ax1.set_title(f'(a) Latency Components @ {int(median_load)} rps')
-            ax1.grid(True, axis='y', alpha=0.3)
-        
-        # Plot 4b: Overhead analysis
-        if breakdown["client_ms"].notna().any() and breakdown["agent_ms"].notna().any():
-            overhead = breakdown["orchestration_ms"] - breakdown["client_ms"]
-            overhead = overhead.dropna()
-            
-            if len(overhead) > 0:
-                ax2.hist(overhead, bins=20, alpha=0.7, edgecolor='black')
-                ax2.axvline(overhead.mean(), color='red', linestyle='--', 
-                           linewidth=2, label=f'Mean: {overhead.mean():.2f} ms')
-                ax2.set_xlabel('Orchestration Overhead (ms)')
-                ax2.set_ylabel('Frequency')
-                ax2.set_title('(b) Scripting/Process Overhead Distribution')
-                ax2.legend()
-                ax2.grid(True, axis='y', alpha=0.3)
-        
+
+        components = [
+            breakdown["orchestration_ms"].dropna(),
+            breakdown["client_ms"].dropna(),
+            breakdown["agent_ms"].dropna(),
+        ]
+        labels = ["Orchestration", "Client HTTP", "Agent Redefine"]
+
+        # Keep only non-empty series, preserve matching labels
+        comp_nonempty = [(s, lbl) for s, lbl in zip(components, labels) if len(s) > 0]
+        if comp_nonempty:
+            ax1.boxplot([s for s, _ in comp_nonempty],
+                        labels=[lbl for _, lbl in comp_nonempty],
+                        patch_artist=True)
+            ax1.set_ylabel("Latency (ms)")
+            ax1.set_title(f"(a) Latency Components @ {int(rep_load)} rps")
+            ax1.grid(True, axis="y", alpha=0.3)
+        else:
+            ax1.text(0.5, 0.5, "No component data", ha="center", va="center", transform=ax1.transAxes)
+            ax1.axis("off")
+
+        # Overhead = orchestration_ms - client_ms (i.e., everything outside the HTTP round-trip)
+        overhead = (breakdown["orchestration_ms"] - breakdown["client_ms"]).dropna()
+
+        if len(overhead) > 0:
+            ax2.hist(overhead, bins=20, alpha=0.7, edgecolor="black")
+            mean_ov = overhead.mean()
+            ax2.axvline(mean_ov, color="red", linestyle="--", linewidth=2,
+                        label=f"Mean: {mean_ov:.2f} ms")
+            ax2.set_xlabel("Orchestration Overhead (ms)")
+            ax2.set_ylabel("Frequency")
+            ax2.set_title("(b) Scripting/Process Overhead Distribution")
+            ax2.legend()
+            ax2.grid(True, axis="y", alpha=0.3)
+        else:
+            ax2.text(0.5, 0.5, "No overhead data", ha="center", va="center", transform=ax2.transAxes)
+            ax2.axis("off")
+
         plt.tight_layout()
-        plt.savefig('results/fig4_component_breakdown.png', bbox_inches='tight')
-        plt.savefig('results/fig4_component_breakdown.pdf', bbox_inches='tight')
+        plt.savefig("results/fig4_component_breakdown.png", bbox_inches="tight")
+        plt.savefig("results/fig4_component_breakdown.pdf", bbox_inches="tight")
         print("  ✓ Saved: fig4_component_breakdown.png/.pdf")
         plt.close()
 

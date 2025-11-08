@@ -75,12 +75,12 @@ stop_load() {
 
 run_apply() {
     local ver="$1" load="$2" scen="$3" run="$4"
-    ./bench-apply.sh "$ver" "$load" "$scen" "$run" 2>&1 | tee -a "$LOG" || echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ"),$scen,$run,$load,patch,$ver,NaN,NaN,NaN,false"
+    ./bench-apply2.sh "$ver" "$load" "$scen" "$run" 2>&1 | tee -a "$LOG" || echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ"),$scen,$run,$load,patch,$ver,NaN,NaN,NaN,false"
 }
 
 run_rollback() {
     local load="$1" scen="$2" run="$3" label="$4"
-    ./bench-rollback.sh "$load" "$scen" "$run" "$label" 2>&1 | tee -a "$LOG" || echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ"),$scen,$run,$load,rollback,$label,NaN,NaN,NaN,false"
+    ./bench-rollback2.sh "$load" "$scen" "$run" "$label" 2>&1 | tee -a "$LOG" || echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ"),$scen,$run,$load,rollback,$label,NaN,NaN,NaN,false"
 }
 
 # Scenario 1: Patch Latency vs Load (with statistical repeats)

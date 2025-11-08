@@ -1,11 +1,11 @@
 #!/bin/bash
-# bench-rollback.sh: rollback and record metrics
+# bench-rollback.sh: rollback and print a CSV row
 set -euo pipefail
 
 LOAD="${1:?Usage: bench-rollback.sh <load_rps> <scenario> <run_id> <version_label>}"
 SCEN="${2:?}"
 RUNID="${3:?}"
-VERLAB="${4:?}"
+VERLAB="${4:?}"   # e.g., "to_v2"
 
 CLASSES_DIR="target/classes"
 AGENT_JAR="target/hotpatch-agent.jar"
@@ -14,42 +14,32 @@ CP="${CLASSES_DIR}${CP_SEP}${AGENT_JAR}"
 
 ts() { date -u +"%Y-%m-%dT%H:%M:%SZ"; }
 
-# Orchestration wall clock
-START_NS=$(date +%s%N 2>/dev/null || python3 -c "import time; print(int(time.time()*1e9))")
+START_NS=$(date +%s%N 2>/dev/null || python - <<'PY'
+import time; print(int(time.time()*1e9))
+PY
+)
 
-# Execute rollback
-OUT=$(java -cp "$CP" com.hotpatch.tool.RollbackApplier 2>&1) || {
-    echo "$(ts),$SCEN,$RUNID,$LOAD,rollback,$VERLAB,NaN,NaN,NaN,false"
-    exit 1
-}
+OUT=$(java -cp "$CP" com.hotpatch.tool.RollbackApplier)
 
-END_NS=$(date +%s%N 2>/dev/null || python3 -c "import time; print(int(time.time()*1e9))")
+END_NS=$(date +%s%N 2>/dev/null || python - <<'PY'
+import time; print(int(time.time()*1e9))
+PY
+)
 ORCH_MS=$(awk -v n="$((END_NS-START_NS))" 'BEGIN{printf("%.3f", n/1e6)}')
 
-# Parse metrics
-CLIENT_MS=""
-AGENT_MS=""
-SUCCESS="true"
-
-METRIC=$(echo "$OUT" | grep '^METRIC ' || true)
+CLIENT_MS=""; AGENT_MS=""
+METRIC=$(echo "$OUT" | awk '/^METRIC /{print}')
 if [ -n "$METRIC" ]; then
-    CLIENT_MS=$(echo "$METRIC" | sed -nE 's/.*client_ms=([0-9.]+).*/\1/p')
-    AGENT_MS=$(echo "$METRIC" | sed -nE 's/.*agent_ms=([0-9.]+).*/\1/p')
+  CLIENT_MS=$(echo "$METRIC" | sed -nE 's/.*client_ms=([0-9.]+).*/\1/p')
+  AGENT_MS=$(echo "$METRIC" | sed -nE 's/.*agent_ms=([0-9.]+).*/\1/p')
 fi
-
 if [ -z "$CLIENT_MS" ]; then
-    CLIENT_MS=$(echo "$OUT" | sed -nE 's/.*Request.*response latency: *([0-9.]+) *ms.*/\1/p' | head -1)
+  CLIENT_MS=$(echo "$OUT" | sed -nE 's/.*Request→response latency: *([0-9.]+) *ms.*/\1/p')
 fi
 if [ -z "$AGENT_MS" ]; then
-    AGENT_MS=$(echo "$OUT" | sed -nE 's/.*OK *([0-9.]+) *ms.*/\1/p' | head -1)
+  AGENT_MS=$(echo "$OUT" | sed -nE 's/.*OK *([0-9.]+) *ms.*/\1/p')
 fi
-
-# Check for errors
-if echo "$OUT" | grep -qi "error\|failed\|exception\|no previous version"; then
-    SUCCESS="false"
-fi
-
 : "${CLIENT_MS:=NaN}"
 : "${AGENT_MS:=NaN}"
 
-echo "$(ts),$SCEN,$RUNID,$LOAD,rollback,$VERLAB,$ORCH_MS,$CLIENT_MS,$AGENT_MS,$SUCCESS"
+echo "$(ts),$SCEN,$RUNID,$LOAD,rollback,$VERLAB,$ORCH_MS,$CLIENT_MS,$AGENT_MS"
