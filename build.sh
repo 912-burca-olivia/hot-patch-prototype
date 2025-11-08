@@ -1,8 +1,5 @@
 #!/bin/bash
 
-# Build script for hot patching demo
-# Works on Linux, Mac, and Windows (Git Bash/MINGW64)
-
 set -e
 
 echo "=== Building Hot Patch Demo ==="

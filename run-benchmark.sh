@@ -4,11 +4,10 @@ set -euo pipefail
 
 RESULTS_DIR="results"
 CSV="$RESULTS_DIR/latency.csv"
-LOG="$RESULTS_DIR/benchmark.log"
 mkdir -p "$RESULTS_DIR"
 
-echo "=== JVM Hot Patching Benchmark Suite ===" | tee "$LOG"
-echo "Started: $(date)" | tee -a "$LOG"
+echo "=== JVM Hot Patching Benchmark Suite ==="
+echo "Started: $(date)"
 echo
 
 # CSV header with enhanced metrics
@@ -22,34 +21,34 @@ VERSIONS=(v1 v2 v3 v4 v5 v6 v7 v8 v9 v10)
 REPEATS=5  # Multiple runs for statistical validity
 WARMUP_RUNS=2
 
-echo "Configuration:" | tee -a "$LOG"
-echo "  Loads: ${LOADS[*]}" | tee -a "$LOG"
-echo "  Versions: ${VERSIONS[*]}" | tee -a "$LOG"
-echo "  Repeats per condition: $REPEATS" | tee -a "$LOG"
-echo "  Warmup runs: $WARMUP_RUNS" | tee -a "$LOG"
-echo | tee -a "$LOG"
+echo "Configuration:"
+echo "  Loads: ${LOADS[*]}"
+echo "  Versions: ${VERSIONS[*]}"
+echo "  Repeats per condition: $REPEATS"
+echo "  Warmup runs: $WARMUP_RUNS"
+
 
 # Rebuild to ensure latest code
-echo "Building project..." | tee -a "$LOG"
+echo "Building project..."
 SKIP_AGENT_JAR=1 ./build.sh > /dev/null 2>&1
-echo "✓ Build complete" | tee -a "$LOG"
+echo "✓ Build complete"
 echo
 
 # Start service
-echo "Starting BusinessRuleService..." | tee -a "$LOG"
+echo "Starting BusinessRuleService..."
 if jps | grep -q BusinessRuleService; then
     pkill -f BusinessRuleService || true
     sleep 2
 fi
-./run-service.sh > "$RESULTS_DIR/service.log" 2>&1 &
+./run-service.sh >/dev/null 2>&1 &
 SERVICE_PID=$!
 sleep 3
 
 if ! jps | grep -q BusinessRuleService; then
-    echo "ERROR: Service failed to start" | tee -a "$LOG"
+    echo "ERROR: Service failed to start"
     exit 1
 fi
-echo "✓ Service running (PID: $SERVICE_PID)" | tee -a "$LOG"
+echo "✓ Service running (PID: $SERVICE_PID)"
 echo
 
 # Helper functions
@@ -59,7 +58,7 @@ run_load() {
         LOAD_PID=""
         return
     fi
-    ./run-load.sh 5 "$rps" > "$RESULTS_DIR/load_${rps}.log" 2>&1 &
+    ./run-load.sh 5 "$rps" >/dev/null 2>&1 & 
     LOAD_PID=$!
     sleep 2  # Let load stabilize
 }
@@ -75,25 +74,25 @@ stop_load() {
 
 run_apply() {
     local ver="$1" load="$2" scen="$3" run="$4"
-    ./bench-apply.sh "$ver" "$load" "$scen" "$run" 2>&1 | tee -a "$LOG" || echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ"),$scen,$run,$load,patch,$ver,NaN,NaN,NaN,false"
+    ./bench-apply.sh "$ver" "$load" "$scen" "$run" 2>&1 || echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ"),$scen,$run,$load,patch,$ver,NaN,NaN,NaN,false"
 }
 
 run_rollback() {
     local load="$1" scen="$2" run="$3" label="$4"
-    ./bench-rollback.sh "$load" "$scen" "$run" "$label" 2>&1 | tee -a "$LOG" || echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ"),$scen,$run,$load,rollback,$label,NaN,NaN,NaN,false"
+    ./bench-rollback.sh "$load" "$scen" "$run" "$label" 2>&1 || echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ"),$scen,$run,$load,rollback,$label,NaN,NaN,NaN,false"
 }
 
 # Scenario 1: Patch Latency vs Load (with statistical repeats)
-echo "=== Scenario 1: Patch Latency vs Load ===" | tee -a "$LOG"
+echo "=== Scenario 1: Patch Latency vs Load ==="
 SCENARIO="S1_patch_vs_load"
 RUN=1
 
 for L in "${LOADS[@]}"; do
-    echo "  Testing load: ${L} rps" | tee -a "$LOG"
+    echo "  Testing load: ${L} rps"
     run_load "$L"
     
     # Warmup
-    echo "    Warmup runs..." | tee -a "$LOG"
+    echo "    Warmup runs..."
     for ((w=1; w<=WARMUP_RUNS; w++)); do
         run_apply "${VERSIONS[0]}" "$L" "${SCENARIO}_warmup" "$RUN" >> "$CSV"
         run_rollback "$L" "${SCENARIO}_warmup" "$RUN" "warmup" >> "$CSV"
@@ -101,7 +100,7 @@ for L in "${LOADS[@]}"; do
     done
     
     # Actual measurements
-    echo "    Measurement runs..." | tee -a "$LOG"
+    echo "    Measurement runs..."
     for ((r=1; r<=REPEATS; r++)); do
         for V in "${VERSIONS[@]}"; do
             run_apply "$V" "$L" "$SCENARIO" "$RUN" >> "$CSV"
@@ -111,19 +110,19 @@ for L in "${LOADS[@]}"; do
     done
     
     stop_load
-    echo "    ✓ Completed ${L} rps" | tee -a "$LOG"
+    echo "    ✓ Completed ${L} rps"
 done
 
-echo "✓ Scenario 1 complete" | tee -a "$LOG"
+echo "✓ Scenario 1 complete"
 echo
 
 # Scenario 2: Rollback Latency vs Load
-echo "=== Scenario 2: Rollback Latency vs Load ===" | tee -a "$LOG"
+echo "=== Scenario 2: Rollback Latency vs Load ==="
 SCENARIO="S2_rollback_vs_load"
 RUN=1
 
 for L in "${LOADS[@]}"; do
-    echo "  Testing load: ${L} rps" | tee -a "$LOG"
+    echo "  Testing load: ${L} rps"
     run_load "$L"
     
     for ((r=1; r<=REPEATS; r++)); do
@@ -134,14 +133,14 @@ for L in "${LOADS[@]}"; do
     done
     
     stop_load
-    echo "    ✓ Completed ${L} rps" | tee -a "$LOG"
+    echo "    ✓ Completed ${L} rps"
 done
 
-echo "✓ Scenario 2 complete" | tee -a "$LOG"
+echo "✓ Scenario 2 complete"
 echo
 
 # Scenario 3: Sequential Patches (Patch Stack Depth)
-echo "=== Scenario 3: Sequential Patch Stack ===" | tee -a "$LOG"
+echo "=== Scenario 3: Sequential Patch Stack ==="
 SCENARIO="S3_sequential"
 L=200  # Representative load
 RUN=1
@@ -149,14 +148,14 @@ RUN=1
 run_load "$L"
 sleep 2
 
-echo "  Applying patches sequentially..." | tee -a "$LOG"
+echo "  Applying patches sequentially..."
 for V in "${VERSIONS[@]}"; do
     run_apply "$V" "$L" "${SCENARIO}_apply" "$RUN" >> "$CSV"
     RUN=$((RUN+1))
     sleep 0.2
 done
 
-echo "  Rolling back sequentially..." | tee -a "$LOG"
+echo "  Rolling back sequentially..."
 for ((i=1; i<=${#VERSIONS[@]}; i++)); do
     run_rollback "$L" "${SCENARIO}_rollback" "$RUN" "step_$i" >> "$CSV"
     RUN=$((RUN+1))
@@ -164,11 +163,11 @@ for ((i=1; i<=${#VERSIONS[@]}; i++)); do
 done
 
 stop_load
-echo "✓ Scenario 3 complete" | tee -a "$LOG"
+echo "✓ Scenario 3 complete"
 echo
 
 # Scenario 4: Patch Complexity Analysis (different rule versions)
-echo "=== Scenario 4: Patch Complexity Impact ===" | tee -a "$LOG"
+echo "=== Scenario 4: Patch Complexity Impact ==="
 SCENARIO="S4_complexity"
 L=100
 RUN=1
@@ -177,7 +176,7 @@ run_load "$L"
 
 # Test each version multiple times to see variation
 for V in "${VERSIONS[@]}"; do
-    echo "  Testing version: $V" | tee -a "$LOG"
+    echo "  Testing version: $V"
     for ((r=1; r<=10; r++)); do  # More repeats for complexity analysis
         run_apply "$V" "$L" "$SCENARIO" "$RUN" >> "$CSV"
         run_rollback "$L" "${SCENARIO}_rollback" "$RUN" "$V" >> "$CSV"
@@ -187,17 +186,17 @@ for V in "${VERSIONS[@]}"; do
 done
 
 stop_load
-echo "✓ Scenario 4 complete" | tee -a "$LOG"
+echo "✓ Scenario 4 complete"
 echo
 
 # Scenario 5: Sustained Load Pattern
-echo "=== Scenario 5: Sustained Load Pattern ===" | tee -a "$LOG"
+echo "=== Scenario 5: Sustained Load Pattern ==="
 SCENARIO="S5_sustained"
 L=300
 RUN=1
 
 run_load "$L"
-echo "  Running sustained load test (60 operations)..." | tee -a "$LOG"
+echo "  Running sustained load test (60 operations)..."
 
 for ((i=1; i<=60; i++)); do
     V=${VERSIONS[$((i % ${#VERSIONS[@]}))]}
@@ -206,37 +205,34 @@ for ((i=1; i<=60; i++)); do
     sleep 0.5
     
     if ((i % 10 == 0)); then
-        echo "    Completed $i/60 operations" | tee -a "$LOG"
+        echo "    Completed $i/60 operations"
     fi
 done
 
 stop_load
-echo "✓ Scenario 5 complete" | tee -a "$LOG"
+echo "✓ Scenario 5 complete"
 echo
 
 # Cleanup
-echo "Cleaning up..." | tee -a "$LOG"
+echo "Cleaning up..."
 stop_load
 kill $SERVICE_PID 2>/dev/null || true
 wait $SERVICE_PID 2>/dev/null || true
 
-echo | tee -a "$LOG"
-echo "=== Benchmark Complete ===" | tee -a "$LOG"
-echo "Completed: $(date)" | tee -a "$LOG"
-echo "Results saved to: $CSV" | tee -a "$LOG"
-echo "Log saved to: $LOG" | tee -a "$LOG"
-echo | tee -a "$LOG"
+echo "=== Benchmark Complete ==="
+echo "Completed: $(date)"
+echo "Results saved to: $CSV"
 
 # Generate plots
-echo "Generating visualizations..." | tee -a "$LOG"
+echo "Generating visualizations..."
 if command -v python3 >/dev/null 2>&1; then
-    python plots/generate-plots.py
-    python plots/generate-dashboard.py
-    echo "✓ Plots and dashboard generated" | tee -a "$LOG"
-    echo "  View results: results/dashboard.html" | tee -a "$LOG"
+    python generate-plots.py
+    python generate-dashboard.py
+    echo "✓ Plots and dashboard generated"
+    echo "  View results: results/dashboard.html"
 else
-    echo "⚠ Python3 not found - skipping visualization" | tee -a "$LOG"
-    echo "  Install Python3 and run: python3 generate-plots.py" | tee -a "$LOG"
+    echo "Python3 not found - skipping visualization"
+    echo "  Install Python3 and run: python3 generate-plots.py"
 fi
 
 echo
