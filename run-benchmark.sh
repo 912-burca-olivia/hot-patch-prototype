@@ -142,7 +142,7 @@ echo
 # Scenario 3: Sequential Patches (Patch Stack Depth)
 echo "=== Scenario 3: Sequential Patch Stack ==="
 SCENARIO="S3_sequential"
-L=200  # Representative load
+L=400  # Representative load
 RUN=1
 
 run_load "$L"
@@ -169,7 +169,7 @@ echo
 # Scenario 4: Patch Complexity Analysis (different rule versions)
 echo "=== Scenario 4: Patch Complexity Impact ==="
 SCENARIO="S4_complexity"
-L=100
+L=400
 RUN=1
 
 run_load "$L"
@@ -192,7 +192,7 @@ echo
 # Scenario 5: Sustained Load Pattern
 echo "=== Scenario 5: Sustained Load Pattern ==="
 SCENARIO="S5_sustained"
-L=300
+L=400
 RUN=1
 
 run_load "$L"
