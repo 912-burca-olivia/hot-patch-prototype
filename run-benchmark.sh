@@ -213,6 +213,41 @@ stop_load
 echo "✓ Scenario 5 complete"
 echo
 
+
+# Scenario 6: Simple vs Heavy Patch (APPLY-ONLY, no rollbacks)
+echo "=== Scenario 6: Simple vs Heavy Patch (apply-only) ==="
+SCENARIO="S6_simple_vs_heavy_apply_only"
+RUN=1
+
+V_SIMPLE="v1"     # pick any “simple” one you like (v1..v10)
+V_HEAVY="v11"     # the heavy class above
+
+for L in "${LOADS[@]}"; do
+    echo "  Testing load: ${L} rps"
+    run_load "$L"
+
+    # tiny warmup (optional)
+    for ((w=1; w<=1; w++)); do
+        run_apply "$V_SIMPLE" "$L" "${SCENARIO}_warmup" "$RUN" >> "$CSV"; RUN=$((RUN+1))
+        run_apply "$V_HEAVY"  "$L" "${SCENARIO}_warmup" "$RUN" >> "$CSV"; RUN=$((RUN+1))
+    done
+
+    echo "    Measurement runs..."
+    for ((r=1; r<=REPEATS; r++)); do
+        # Apply simple over whatever is currently active
+        run_apply "$V_SIMPLE" "$L" "$SCENARIO" "$RUN" >> "$CSV"; RUN=$((RUN+1)); sleep 0.1
+        # Apply heavy over whatever is currently active
+        run_apply "$V_HEAVY"  "$L" "$SCENARIO" "$RUN" >> "$CSV"; RUN=$((RUN+1)); sleep 0.1
+    done
+
+    stop_load
+    echo "    ✓ Completed ${L} rps"
+done
+
+echo "✓ Scenario 6 complete"
+echo
+
+
 # Cleanup
 echo "Cleaning up..."
 stop_load
